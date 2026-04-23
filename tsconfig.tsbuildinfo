@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/Board.tsx","./src/components/Card.tsx","./src/components/CardModal.tsx","./src/components/Column.tsx","./src/components/Popover.tsx","./src/components/Sidebar.tsx","./src/components/ui.ts","./src/lib/seed.ts","./src/lib/uid.ts","./src/store/useStore.ts"],"version":"5.9.3"}

@@ -1,0 +1,131 @@
+@import '@fontsource-variable/inter/index.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-paper text-ink font-sans;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.011em;
+}
+
+/* Subtle paper grain — barely perceptible, gives the background life */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(30, 30, 28, 0.025) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* Selection */
+::selection {
+  background: #B54A2C;
+  color: #FAFAF5;
+}
+
+/* Scrollbars — quiet and deliberate */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background-clip: padding-box;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(30, 30, 28, 0.14);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(30, 30, 28, 0.26);
+  background-clip: padding-box;
+}
+
+/* Buttons — reset for a consistent baseline */
+button {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+/* Inputs: remove default blue outlines, we provide our own */
+input,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+}
+input:focus,
+textarea:focus,
+button:focus {
+  outline: none;
+}
+
+/* Tiny caps label */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9A9892;
+}
+
+/* Serif accent */
+.serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+  letter-spacing: -0.005em;
+}
+
+/* Dragging card state */
+.is-dragging {
+  cursor: grabbing !important;
+}
+.dnd-overlay {
+  pointer-events: none;
+  transform: rotate(1.2deg);
+}
+
+/* Focus ring */
+.ring-focus {
+  box-shadow: 0 0 0 2px rgba(181, 74, 44, 0.22), 0 0 0 4px rgba(181, 74, 44, 0.08);
+}
+
+/* Dialog backdrop — no filter (filters are heavy on big surfaces) */
+.backdrop {
+  background: rgba(30, 30, 28, 0.34);
+}
+
+/* Hide paper grain while a modal is open — saves a full-viewport repaint layer */
+body:has(.modal-open)::before {
+  display: none;
+}
