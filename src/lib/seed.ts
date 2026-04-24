@@ -4,4 +4,5 @@ export const seed = (): AppState => ({
   projects: {},
   projectOrder: [],
   activeProjectId: null,
+  view: 'dashboard',
 })

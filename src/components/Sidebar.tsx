@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense } from 'react'
 import clsx from 'clsx'
-import { Plus, MoreHorizontal, Pencil, Trash2, Smile } from 'lucide-react'
+import { Plus, MoreHorizontal, Pencil, Trash2, Smile, Home, Sun } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { Popover, MenuItem, MenuDivider } from './Popover'
 
@@ -15,6 +15,8 @@ export function Sidebar() {
   const renameProject = useStore((s) => s.renameProject)
   const deleteProject = useStore((s) => s.deleteProject)
   const setProjectEmoji = useStore((s) => s.setProjectEmoji)
+  const view = useStore((s) => s.view ?? 'dashboard')
+  const setView = useStore((s) => s.setView)
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -54,8 +56,36 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* Nav */}
+      <div className="mt-2 space-y-0.5 px-2">
+        <button
+          onClick={() => setView('dashboard')}
+          className={clsx(
+            'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors',
+            view === 'dashboard'
+              ? 'bg-paper-raised font-semibold text-ink shadow-card'
+              : 'text-ink/85 hover:bg-paper-raised/60',
+          )}
+        >
+          <Home className="h-[14px] w-[14px]" strokeWidth={2} />
+          Início
+        </button>
+        <button
+          onClick={() => setView('myday')}
+          className={clsx(
+            'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors',
+            view === 'myday'
+              ? 'bg-paper-raised font-semibold text-ink shadow-card'
+              : 'text-ink/85 hover:bg-paper-raised/60',
+          )}
+        >
+          <Sun className="h-[14px] w-[14px]" strokeWidth={2} />
+          Meu dia
+        </button>
+      </div>
+
       {/* Projects label */}
-      <div className="mt-2 flex items-center justify-between px-5">
+      <div className="mt-4 flex items-center justify-between px-5">
         <div className="eyebrow">Projetos</div>
         <button
           onClick={() => {
@@ -75,7 +105,7 @@ export function Sidebar() {
           {projectOrder.map((id) => {
             const p = projects[id]
             if (!p) return null
-            const active = activeProjectId === id
+            const active = activeProjectId === id && view === 'project'
             const columnCount = p.columnOrder.length
             const cardCount = Object.keys(p.cards).length
 

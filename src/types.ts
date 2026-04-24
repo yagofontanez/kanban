@@ -49,12 +49,19 @@ export type ActivityType =
   | 'link_added'
   | 'link_removed'
   | 'comment_added'
+  | 'pomodoro_completed'
 
 export interface ActivityEvent {
   id: string
   type: ActivityType
   createdAt: number
   data?: Record<string, any>
+}
+
+export interface PomodoroSession {
+  id: string
+  completedAt: number
+  durationMin: number
 }
 
 export interface Card {
@@ -68,6 +75,7 @@ export interface Card {
   links: CardLink[]
   comments: Comment[]
   activity: ActivityEvent[]
+  pomodoros?: PomodoroSession[]
   createdAt: number
 }
 
@@ -86,6 +94,7 @@ export interface Column {
   name: string
   color: ColumnColor
   cardIds: string[]
+  collapsed?: boolean
 }
 
 export interface Project {
@@ -100,8 +109,13 @@ export interface Project {
   createdAt: number
 }
 
+export type AppView = 'dashboard' | 'myday' | 'project'
+
 export interface AppState {
   projects: Record<string, Project>
   projectOrder: string[]
   activeProjectId: string | null
+  view?: AppView
+  focusMode?: boolean
+  focusColumnId?: string | null
 }

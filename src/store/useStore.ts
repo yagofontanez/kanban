@@ -28,9 +28,10 @@ interface Actions {
   reorderProjects: (fromId: string, toId: string) => void
 
   // Columns
-  createColumn: (projectId: string, name: string) => void
+  createColumn: (projectId: string, name: string) => string
   renameColumn: (projectId: string, columnId: string, name: string) => void
   setColumnColor: (projectId: string, columnId: string, color: ColumnColor) => void
+  toggleColumnCollapsed: (projectId: string, columnId: string) => void
   deleteColumn: (projectId: string, columnId: string) => void
   moveColumn: (projectId: string, activeId: string, overId: string) => void
 
@@ -66,6 +67,19 @@ interface Actions {
   // Comments
   addComment: (projectId: string, cardId: string, body: string) => void
   deleteComment: (projectId: string, cardId: string, commentId: string) => void
+
+  // Pomodoro
+  logPomodoroSession: (projectId: string, cardId: string, durationMin: number) => void
+
+  // View
+  setView: (view: 'dashboard' | 'myday' | 'project') => void
+
+  // Focus mode
+  setFocusMode: (on: boolean, columnId?: string | null) => void
+
+  // Import / Export
+  exportProject: (projectId: string) => string | null
+  importProject: (data: unknown, opts?: { mode?: 'new' | 'replace' }) => string | null
 
   // Debug / reset
   resetToSeed: () => void
@@ -165,7 +179,7 @@ export const useStore = create<Store>()(
         }),
 
       setActiveProject: (projectId) =>
-        set((s) => (s.projects[projectId] ? { activeProjectId: projectId } : s)),
+        set((s) => (s.projects[projectId] ? { activeProjectId: projectId, view: 'project' } : s)),
 
       reorderProjects: (fromId, toId) =>
         set((s) => {
@@ -179,11 +193,11 @@ export const useStore = create<Store>()(
         }),
 
       // ── Columns ─────────────────────────────────────────────────
-      createColumn: (projectId, name) =>
+      createColumn: (projectId, name) => {
+        const id = uid('col')
         set((s) => {
           const p = s.projects[projectId]
           if (!p) return s
-          const id = uid('col')
           const col: Column = {
             id,
             name: name.trim() || 'Nova coluna',
@@ -196,7 +210,9 @@ export const useStore = create<Store>()(
             columnOrder: [...p.columnOrder, id],
           }
           return { projects: { ...s.projects, [projectId]: next } }
-        }),
+        })
+        return id
+      },
 
       renameColumn: (projectId, columnId, name) =>
         set((s) => {
@@ -220,6 +236,19 @@ export const useStore = create<Store>()(
           const next: Project = {
             ...p,
             columns: { ...p.columns, [columnId]: { ...col, color } },
+          }
+          return { projects: { ...s.projects, [projectId]: next } }
+        }),
+
+      toggleColumnCollapsed: (projectId, columnId) =>
+        set((s) => {
+          const p = s.projects[projectId]
+          if (!p) return s
+          const col = p.columns[columnId]
+          if (!col) return s
+          const next: Project = {
+            ...p,
+            columns: { ...p.columns, [columnId]: { ...col, collapsed: !col.collapsed } },
           }
           return { projects: { ...s.projects, [projectId]: next } }
         }),
@@ -675,6 +704,31 @@ export const useStore = create<Store>()(
           }
         }),
 
+      logPomodoroSession: (projectId, cardId, durationMin) =>
+        set((s) => {
+          const p = s.projects[projectId]
+          if (!p) return s
+          const card = p.cards[cardId]
+          if (!card) return s
+          const session = { id: uid('pom'), completedAt: Date.now(), durationMin }
+          const next = withActivity(
+            { ...card, pomodoros: [...(card.pomodoros ?? []), session] },
+            'pomodoro_completed',
+            { durationMin },
+          )
+          return {
+            projects: {
+              ...s.projects,
+              [projectId]: { ...p, cards: { ...p.cards, [cardId]: next } },
+            },
+          }
+        }),
+
+      setView: (view) => set(() => ({ view })),
+
+      setFocusMode: (on, columnId) =>
+        set(() => ({ focusMode: on, focusColumnId: columnId ?? null })),
+
       deleteComment: (projectId, cardId, commentId) =>
         set((s) => {
           const p = s.projects[projectId]
@@ -698,6 +752,117 @@ export const useStore = create<Store>()(
           }
         }),
 
+      // ── Import / Export ────────────────────────────────────────
+      exportProject: (projectId) => {
+        const state = (useStore.getState() as any)
+        const p: Project | undefined = state.projects[projectId]
+        if (!p) return null
+        const payload = {
+          version: 1,
+          kind: 'kanban.project',
+          exportedAt: Date.now(),
+          project: p,
+        }
+        return JSON.stringify(payload, null, 2)
+      },
+
+      importProject: (data, opts) => {
+        const mode = opts?.mode ?? 'new'
+        try {
+          const parsed: any = typeof data === 'string' ? JSON.parse(data) : data
+          const raw: any = parsed?.project ?? parsed
+          if (!raw || typeof raw !== 'object' || !raw.columns || !raw.cards) return null
+
+          // Build a sanitized Project — renumber IDs to avoid collisions when mode === 'new'
+          const idMap = new Map<string, string>()
+          const remap = (oldId: string, prefix: string) => {
+            const existing = idMap.get(oldId)
+            if (existing) return existing
+            const fresh = mode === 'new' ? uid(prefix) : oldId
+            idMap.set(oldId, fresh)
+            return fresh
+          }
+
+          const labels: Record<string, Label> = {}
+          const labelOrder: string[] = []
+          for (const oldLid of raw.labelOrder ?? Object.keys(raw.labels ?? {})) {
+            const l = raw.labels?.[oldLid]
+            if (!l) continue
+            const nid = remap(oldLid, 'lbl')
+            labels[nid] = { id: nid, name: String(l.name ?? ''), color: l.color }
+            labelOrder.push(nid)
+          }
+
+          const cards: Record<string, Card> = {}
+          for (const [oldCid, c] of Object.entries<any>(raw.cards ?? {})) {
+            const nid = remap(oldCid, 'card')
+            cards[nid] = {
+              id: nid,
+              title: String(c.title ?? 'Sem título'),
+              description: String(c.description ?? ''),
+              labelIds: Array.isArray(c.labelIds)
+                ? c.labelIds.map((x: string) => idMap.get(x) ?? x).filter((x: string) => labels[x])
+                : [],
+              priority: c.priority ?? 'none',
+              dueDate: c.dueDate ?? null,
+              checklist: Array.isArray(c.checklist) ? c.checklist : [],
+              links: Array.isArray(c.links) ? c.links : [],
+              comments: Array.isArray(c.comments) ? c.comments : [],
+              activity: Array.isArray(c.activity) ? c.activity : [mkEvent('created')],
+              createdAt: Number(c.createdAt) || Date.now(),
+            }
+          }
+
+          const columns: Record<string, Column> = {}
+          const columnOrder: string[] = []
+          for (const oldColId of raw.columnOrder ?? Object.keys(raw.columns ?? {})) {
+            const col = raw.columns?.[oldColId]
+            if (!col) continue
+            const nid = remap(oldColId, 'col')
+            columns[nid] = {
+              id: nid,
+              name: String(col.name ?? 'Coluna'),
+              color: col.color ?? 'neutral',
+              cardIds: Array.isArray(col.cardIds)
+                ? col.cardIds.map((x: string) => idMap.get(x) ?? x).filter((x: string) => cards[x])
+                : [],
+              collapsed: Boolean(col.collapsed),
+            }
+            columnOrder.push(nid)
+          }
+
+          const newId = mode === 'new' ? uid('prj') : String(raw.id ?? uid('prj'))
+          const project: Project = {
+            id: newId,
+            name: String(raw.name ?? 'Projeto importado'),
+            emoji: String(raw.emoji ?? '✦'),
+            columnOrder,
+            columns,
+            cards,
+            labels,
+            labelOrder,
+            createdAt: Number(raw.createdAt) || Date.now(),
+          }
+
+          set((s) => {
+            if (mode === 'replace' && s.projects[newId]) {
+              return {
+                projects: { ...s.projects, [newId]: project },
+                activeProjectId: newId,
+              }
+            }
+            return {
+              projects: { ...s.projects, [newId]: project },
+              projectOrder: s.projectOrder.includes(newId) ? s.projectOrder : [...s.projectOrder, newId],
+              activeProjectId: newId,
+            }
+          })
+          return newId
+        } catch {
+          return null
+        }
+      },
+
       resetToSeed: () => set(() => ({ ...seed() })),
     }),
     {
@@ -708,6 +873,7 @@ export const useStore = create<Store>()(
         projects: state.projects,
         projectOrder: state.projectOrder,
         activeProjectId: state.activeProjectId,
+        view: state.view,
       }),
       migrate: (persisted: any, _fromVersion) => {
         if (!persisted || typeof persisted !== 'object') return persisted

@@ -28,6 +28,7 @@ import {
   priorityStyles,
 } from './ui'
 import { Popover, MenuItem, MenuDivider } from './Popover'
+import { PomodoroSection } from './PomodoroSection'
 
 interface Props {
   projectId: string
@@ -159,6 +160,7 @@ export function CardModal({ projectId, card, columnId, onClose }: Props) {
 
                 <ChecklistSection projectId={projectId} card={card} />
                 <LinksSection projectId={projectId} card={card} />
+                <PomodoroSection projectId={projectId} card={card} />
 
                 {/* Comments */}
                 <section className="mt-8">
@@ -913,6 +915,11 @@ function describeActivity(ev: ActivityEvent): { icon: React.ReactNode; body: Rea
       return { icon: <LinkIcon className="h-3 w-3" />, body: <>removeu o link <em className="not-italic font-medium text-ink">{data.title}</em></> }
     case 'comment_added':
       return { icon: <MessageSquarePlus className="h-3 w-3" />, body: <>comentou</> }
+    case 'pomodoro_completed':
+      return {
+        icon: <History className="h-3 w-3" />,
+        body: <>completou um pomodoro de <em className="not-italic font-medium text-ink">{data.durationMin ?? 25}min</em></>,
+      }
     default:
       return { icon: <History className="h-3 w-3" />, body: <>atualizou o card</> }
   }

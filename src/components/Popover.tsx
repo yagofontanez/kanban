@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 
 interface PopoverProps {
@@ -10,12 +11,44 @@ interface PopoverProps {
 
 export function Popover({ trigger, children, align = 'right', className }: PopoverProps) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+  const reposition = () => {
+    const a = anchorRef.current
+    if (!a) return
+    const r = a.getBoundingClientRect()
+    const menu = menuRef.current
+    const menuWidth = menu?.offsetWidth ?? 184
+    const top = r.bottom + 6
+    const left = align === 'right' ? r.right - menuWidth : r.left
+    // Keep within viewport horizontally
+    const clampedLeft = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8))
+    setPos({ top, left: clampedLeft })
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return
+    reposition()
+    const onScroll = () => reposition()
+    const onResize = () => reposition()
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   useEffect(() => {
     if (!open) return
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (anchorRef.current?.contains(t)) return
+      if (menuRef.current?.contains(t)) return
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
@@ -29,20 +62,32 @@ export function Popover({ trigger, children, align = 'right', className }: Popov
   }, [open])
 
   return (
-    <div ref={ref} className="relative">
-      {trigger({ open, toggle: () => setOpen((v) => !v) })}
-      {open && (
-        <div
-          className={clsx(
-            'absolute z-40 mt-1.5 min-w-[184px] rounded-lg border border-edge bg-paper-raised p-1 shadow-pop animate-pop-in',
-            align === 'right' ? 'right-0' : 'left-0',
-            className,
-          )}
-        >
-          {children({ close: () => setOpen(false) })}
-        </div>
-      )}
-    </div>
+    <>
+      <div ref={anchorRef} className="inline-flex">
+        {trigger({ open, toggle: () => setOpen((v) => !v) })}
+      </div>
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: 'fixed',
+              top: pos?.top ?? -9999,
+              left: pos?.left ?? -9999,
+              backgroundColor: '#FFFFFF',
+              zIndex: 2000,
+              visibility: pos ? 'visible' : 'hidden',
+            }}
+            className={clsx(
+              'min-w-[184px] rounded-lg border border-edge p-1 shadow-pop animate-pop-in',
+              className,
+            )}
+          >
+            {children({ close: () => setOpen(false) })}
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }
 

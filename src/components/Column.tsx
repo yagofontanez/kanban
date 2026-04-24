@@ -1,34 +1,57 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useDroppable } from '@dnd-kit/core'
-import { Plus, MoreHorizontal, Pencil, Trash2, GripVertical, Palette } from 'lucide-react'
+import {
+  Plus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  GripVertical,
+  Palette,
+  ChevronsLeftRight,
+  ChevronsRightLeft,
+} from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import type { Column as ColumnT, ColumnColor } from '@/types'
 import { Card } from './Card'
 import { Popover, MenuItem, MenuDivider } from './Popover'
 import { COLUMN_COLORS, COLUMN_COLOR_NAMES, columnStyles } from './ui'
+import { matchesFilters, type FilterState } from './FilterBar'
 
 interface Props {
   projectId: string
   column: ColumnT
   onOpenCard: (cardId: string) => void
+  filters?: FilterState
+  composeToken?: number
 }
 
-export function Column({ projectId, column, onOpenCard }: Props) {
+export function Column({ projectId, column, onOpenCard, filters, composeToken }: Props) {
   const cards = useStore((s) => s.projects[projectId]?.cards)
+  const labels = useStore((s) => s.projects[projectId]?.labels)
   const renameColumn = useStore((s) => s.renameColumn)
   const deleteColumn = useStore((s) => s.deleteColumn)
   const createCard = useStore((s) => s.createCard)
   const setColumnColor = useStore((s) => s.setColumnColor)
+  const toggleColumnCollapsed = useStore((s) => s.toggleColumnCollapsed)
   const color: ColumnColor = column.color ?? 'neutral'
   const cStyle = columnStyles[color]
+  const collapsed = !!column.collapsed
 
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(column.name)
   const [composing, setComposing] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+
+  // External trigger from Board — pressing "N" adds a card to the first column.
+  useEffect(() => {
+    if (composeToken === undefined) return
+    setComposing(true)
+    if (column.collapsed) toggleColumnCollapsed(projectId, column.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeToken])
 
   const {
     attributes,
@@ -42,7 +65,6 @@ export function Column({ projectId, column, onOpenCard }: Props) {
     data: { type: 'column', columnId: column.id },
   })
 
-  // Dedicated droppable so we can drop a card on an empty column
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: `col-droppable:${column.id}`,
     data: { type: 'column-droppable', columnId: column.id },
@@ -65,6 +87,75 @@ export function Column({ projectId, column, onOpenCard }: Props) {
     setComposing(false)
   }
 
+  // Filter visible cards
+  const visibleCardIds = (() => {
+    if (!filters || !labels) return column.cardIds
+    const q = filters.query.trim()
+    const anyActive = q || filters.labelIds.length > 0 || filters.priorities.length > 0
+    if (!anyActive) return column.cardIds
+    return column.cardIds.filter((cid) => {
+      const c = cards?.[cid]
+      if (!c) return false
+      return matchesFilters(c, filters)
+    })
+  })()
+
+  const hiddenCount = column.cardIds.length - visibleCardIds.length
+
+  // ── Collapsed rendering ──────────────────────────────────────────
+  if (collapsed) {
+    return (
+      <div
+        ref={setSortableRef}
+        style={style}
+        className={clsx(
+          'group/col flex h-full w-[44px] shrink-0 flex-col items-center rounded-xl py-3',
+          cStyle.surface,
+          isDragging && 'opacity-50',
+          isOver && 'ring-1 ring-edge-strong',
+        )}
+      >
+        <div
+          {...attributes}
+          {...listeners}
+          ref={setDroppableRef}
+          className="flex h-full w-full cursor-grab flex-col items-center justify-between gap-2 py-1 active:cursor-grabbing"
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleColumnCollapsed(projectId, column.id)
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex h-6 w-6 items-center justify-center rounded text-ink-muted hover:bg-paper-raised hover:text-ink"
+            title="Expandir coluna"
+          >
+            <ChevronsLeftRight className="h-3.5 w-3.5" />
+          </button>
+
+          <div className="flex flex-1 flex-col items-center justify-center gap-2">
+            <span
+              className={clsx(
+                'select-none text-[12px] font-semibold uppercase tracking-[0.08em]',
+                cStyle.title,
+              )}
+              style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+              title={column.name}
+            >
+              {column.name}
+            </span>
+            <span className="rounded bg-paper-raised px-1.5 py-0.5 text-2xs font-medium text-ink-muted shadow-inset">
+              {column.cardIds.length}
+            </span>
+          </div>
+
+          <span className={clsx('h-1.5 w-1.5 rounded-full', cStyle.dot)} />
+        </div>
+      </div>
+    )
+  }
+
+  // ── Expanded rendering ──────────────────────────────────────────
   return (
     <div
       ref={setSortableRef}
@@ -75,7 +166,7 @@ export function Column({ projectId, column, onOpenCard }: Props) {
         isDragging && 'opacity-50',
       )}
     >
-      {/* Header — entire bar is the drag handle (pointer sensor keeps clicks intact) */}
+      {/* Header */}
       <div
         {...attributes}
         {...listeners}
@@ -87,6 +178,58 @@ export function Column({ projectId, column, onOpenCard }: Props) {
         >
           <GripVertical className="h-4 w-4" />
         </span>
+
+        {/* Color dot — click opens a tiny color picker */}
+        <Popover
+          align="left"
+          trigger={({ toggle }) => (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                toggle()
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="flex h-4 w-4 items-center justify-center rounded transition-transform hover:scale-125"
+              title={`Cor · ${COLUMN_COLOR_NAMES[color]}`}
+            >
+              <span className={clsx('h-2 w-2 rounded-full', cStyle.dot)} />
+            </button>
+          )}
+        >
+          {({ close }) => (
+            <div className="w-[168px] p-2">
+              <div className="mb-1.5 flex items-center gap-1.5 text-ink-soft">
+                <Palette className="h-3.5 w-3.5" strokeWidth={2} />
+                <span className="text-2xs font-semibold uppercase tracking-[0.08em]">
+                  Cor · {COLUMN_COLOR_NAMES[color]}
+                </span>
+              </div>
+              <div className="grid grid-cols-8 gap-1">
+                {COLUMN_COLORS.map((c) => {
+                  const s = columnStyles[c]
+                  const active = color === c
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => {
+                        setColumnColor(projectId, column.id, c)
+                        close()
+                      }}
+                      title={COLUMN_COLOR_NAMES[c]}
+                      className={clsx(
+                        'flex h-6 w-6 items-center justify-center rounded ring-1 ring-inset transition-transform hover:scale-110',
+                        s.swatch,
+                        active && 'ring-2 ring-ink',
+                      )}
+                    >
+                      <span className={clsx('h-1.5 w-1.5 rounded-full', s.dot)} />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </Popover>
 
         {renaming ? (
           <input
@@ -111,24 +254,38 @@ export function Column({ projectId, column, onOpenCard }: Props) {
               setRenaming(true)
             }}
             className={clsx(
-              'flex min-w-0 flex-1 items-center gap-1.5 truncate text-left text-[12.5px] font-semibold uppercase tracking-[0.06em] hover:opacity-80',
+              'flex min-w-0 flex-1 items-center truncate text-left text-[12.5px] font-semibold uppercase tracking-[0.06em] hover:opacity-80',
               cStyle.title,
             )}
           >
-            <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', cStyle.dot)} />
             <span className="truncate">{column.name}</span>
           </button>
         )}
 
         <span className="rounded bg-paper-raised px-1.5 py-0.5 text-2xs font-medium text-ink-muted shadow-inset">
-          {column.cardIds.length}
+          {hiddenCount > 0
+            ? `${visibleCardIds.length}/${column.cardIds.length}`
+            : column.cardIds.length}
         </span>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleColumnCollapsed(projectId, column.id)
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex h-6 w-6 items-center justify-center rounded text-ink-muted hover:bg-paper-raised hover:text-ink"
+          title="Colapsar coluna"
+        >
+          <ChevronsRightLeft className="h-3.5 w-3.5" />
+        </button>
 
         <Popover
           align="right"
           trigger={({ toggle }) => (
             <button
               onClick={toggle}
+              onPointerDown={(e) => e.stopPropagation()}
               className="flex h-6 w-6 items-center justify-center rounded text-ink-muted hover:bg-paper-raised hover:text-ink"
               title="Opções"
             >
@@ -156,6 +313,15 @@ export function Column({ projectId, column, onOpenCard }: Props) {
                 }}
               >
                 Adicionar card
+              </MenuItem>
+              <MenuItem
+                icon={<ChevronsRightLeft className="h-3.5 w-3.5" />}
+                onClick={() => {
+                  toggleColumnCollapsed(projectId, column.id)
+                  close()
+                }}
+              >
+                Colapsar coluna
               </MenuItem>
               <MenuDivider />
               <div className="px-2 pb-1 pt-1">
@@ -215,8 +381,8 @@ export function Column({ projectId, column, onOpenCard }: Props) {
           isOver && 'bg-accent/5',
         )}
       >
-        <SortableContext items={column.cardIds} strategy={verticalListSortingStrategy}>
-          {column.cardIds.map((cardId) => {
+        <SortableContext items={visibleCardIds} strategy={verticalListSortingStrategy}>
+          {visibleCardIds.map((cardId) => {
             const card = cards?.[cardId]
             if (!card) return null
             return (
@@ -235,6 +401,13 @@ export function Column({ projectId, column, onOpenCard }: Props) {
           <div className="rounded-lg border border-dashed border-edge/80 px-3 py-6 text-center">
             <div className="text-[12.5px] text-ink-soft">Coluna vazia.</div>
             <div className="text-2xs text-ink-faint">Arraste um card ou adicione um.</div>
+          </div>
+        )}
+
+        {column.cardIds.length > 0 && visibleCardIds.length === 0 && !composing && (
+          <div className="rounded-lg border border-dashed border-edge/80 px-3 py-5 text-center">
+            <div className="text-[12.5px] text-ink-soft">Nenhum card corresponde aos filtros.</div>
+            <div className="text-2xs text-ink-faint">{column.cardIds.length} oculto{column.cardIds.length > 1 ? 's' : ''}.</div>
           </div>
         )}
 
